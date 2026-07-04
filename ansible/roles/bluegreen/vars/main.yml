@@ -1,0 +1,19 @@
+---
+# Slot definitions — these never change
+slots:
+  blue:
+    name: blue
+    port: 8080
+    dir: /var/www/blue
+    color: #1e3a5f
+    text_color: #93c5fd
+
+  green:
+    name: green
+    port: 8081
+    dir: /var/www/green
+    color: #14532d
+    text_color: #86efac
+
+# Active slot tracker file location
+active_slot_file: /etc/bluegreen/active_slot

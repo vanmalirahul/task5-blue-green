@@ -1,0 +1,128 @@
+---
+##################################################################
+# PHASE 1: DISCOVER — figure out which slot is active right now
+##################################################################
+
+- name: "[PHASE 1] Read current active slot from tracker file"
+  slurp:
+    src: "{{ active_slot_file }}"
+  register: slot_content
+
+- name: "[PHASE 1] Set active and idle slot variables"
+  set_fact:
+    current_active: "{{ slot_content.content | b64decode | trim }}"
+    deploy_to: "{{ 'green' if (slot_content.content | b64decode | trim) == 'blue' else 'blue' }}"
+    # If currently active = blue → deploy to green, and vice versa
+
+- name: "[PHASE 1] Calculate deploy slot properties"
+  set_fact:
+    deploy_port:  "{{ slots[deploy_to].port }}"
+    deploy_dir:   "{{ slots[deploy_to].dir }}"
+    deploy_color: "{{ slots[deploy_to].color }}"
+    deploy_text:  "{{ slots[deploy_to].text_color }}"
+
+- name: "[PHASE 1] Print deployment plan"
+  debug:
+    msg:
+      - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      - "CURRENT LIVE:  {{ current_active }} (port {{ slots[current_active].port }})"
+      - "DEPLOYING TO:  {{ deploy_to }} (port {{ deploy_port }})"
+      - "DEPLOY DIR:    {{ deploy_dir }}"
+      - "APP VERSION:   {{ app_version | default('unspecified') }}"
+      - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+##################################################################
+# PHASE 2: DEPLOY — put new code into the IDLE slot
+##################################################################
+
+- name: "[PHASE 2] Ensure deploy directory exists"
+  file:
+    path: "{{ deploy_dir }}"
+    state: directory
+    owner: nginx
+    group: nginx
+    mode: '0755'
+
+- name: "[PHASE 2] Deploy new HTML page to {{ deploy_to }} slot"
+  template:
+    src: app.html.j2
+    dest: "{{ deploy_dir }}/index.html"
+    owner: nginx
+    group: nginx
+    mode: '0644'
+
+- name: "[PHASE 2] Write version metadata file"
+  copy:
+    content: |
+      slot={{ deploy_to }}
+      version={{ app_version | default('unknown') }}
+      deployed_at={{ ansible_date_time.iso8601 }}
+      deployed_by=jenkins
+    dest: "{{ deploy_dir }}/VERSION"
+
+##################################################################
+# PHASE 3: HEALTH CHECK — verify new version is actually working
+##################################################################
+
+- name: "[PHASE 3] Wait for new slot to be ready (give it 3 seconds)"
+  wait_for:
+    port: "{{ deploy_port }}"
+    host: 127.0.0.1
+    timeout: 30               # wait up to 30 seconds
+    delay: 3                  # wait 3 seconds before first check
+
+- name: "[PHASE 3] Run health check on new slot"
+  uri:
+    url: "http://127.0.0.1:{{ deploy_port }}/health"
+    method: GET
+    status_code: 200
+    timeout: 10
+  register: health_check
+  retries: 3                 # try up to 3 times
+  delay: 5                   # wait 5 seconds between retries
+  until: health_check.status == 200
+
+- name: "[PHASE 3] Health check passed — show result"
+  debug:
+    msg: "✅ Health check PASSED for {{ deploy_to }} slot (port {{ deploy_port }})"
+
+##################################################################
+# PHASE 4: SWITCH — flip traffic from old slot to new slot
+##################################################################
+
+- name: "[PHASE 4] Update active slot tracker file"
+  copy:
+    content: "{{ deploy_to }}"
+    dest: "{{ active_slot_file }}"
+    mode: '0644'
+  # This updates /etc/bluegreen/active_slot to say "green" (or "blue")
+  # Next time Nginx role runs, it reads this and routes to new slot
+
+- name: "[PHASE 4] Regenerate Nginx config pointing to new slot"
+  include_role:
+    name: nginx
+  # This re-runs the Nginx role which reads the new active_slot file
+  # and reloads Nginx — TRAFFIC SWITCHES HERE in <100ms
+
+##################################################################
+# PHASE 5: VERIFY + REPORT
+##################################################################
+
+- name: "[PHASE 5] Verify new slot is serving on port 80"
+  uri:
+    url: "http://127.0.0.1:80"
+    method: GET
+    status_code: 200
+    timeout: 10
+  register: final_check
+
+- name: "[PHASE 5] Final deployment report"
+  debug:
+    msg:
+      - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      - "✅ DEPLOYMENT COMPLETE"
+      - "New live slot: {{ deploy_to }} (port {{ deploy_port }})"
+      - "Previous slot: {{ current_active }} — now idle (kept as rollback target)"
+      - "Public URL: http://192.168.1.102"
+      - "Version: {{ app_version | default('unknown') }}"
+      - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

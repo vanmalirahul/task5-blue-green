@@ -1,0 +1,64 @@
+---
+# ROLLBACK PLAYBOOK
+# Instantly switches traffic back to the PREVIOUS slot
+# The previous slot still has the old working version running!
+
+- name: Blue-Green Emergency Rollback
+  hosts: appservers
+  become: yes
+
+  vars:
+    active_slot_file: /etc/bluegreen/active_slot
+    slots:
+      blue: { port: 8080, dir: /var/www/blue }
+      green: { port: 8081, dir: /var/www/green }
+
+  tasks:
+    - name: Read current (broken) active slot
+      slurp:
+        src: "{{ active_slot_file }}"
+      register: slot_content
+
+    - name: Determine rollback target
+      set_fact:
+        broken_slot:   "{{ slot_content.content | b64decode | trim }}"
+        rollback_slot: "{{ 'blue' if (slot_content.content | b64decode | trim) == 'green' else 'green' }}"
+
+    - name: Print rollback plan
+      debug:
+        msg:
+          - "🚨 ROLLBACK INITIATED"
+          - "Rolling back FROM: {{ broken_slot }} (failed)"
+          - "Rolling back TO:   {{ rollback_slot }} (previous working version)"
+
+    - name: Set rollback slot as active
+      copy:
+        content: "{{ rollback_slot }}"
+        dest: "{{ active_slot_file }}"
+
+    - name: Regenerate Nginx config to point to rollback slot
+      template:
+        src: roles/nginx/templates/nginx.conf.j2
+        dest: /etc/nginx/conf.d/bluegreen.conf
+      vars:
+        active_slot: "{{ rollback_slot }}"
+        active_port: "{{ slots[rollback_slot].port }}"
+
+    - name: Reload Nginx — traffic now goes back to previous working version
+      service:
+        name: nginx
+        state: reloaded   # RELOAD not restart — no dropped connections
+
+    - name: Verify rollback is serving traffic
+      uri:
+        url: http://127.0.0.1:80
+        status_code: 200
+        timeout: 10
+
+    - name: Rollback complete
+      debug:
+        msg:
+          - "✅ ROLLBACK COMPLETE"
+          - "Traffic is now on {{ rollback_slot }} slot"
+          - "The {{ broken_slot }} slot contains the FAILED version"
+          - "NEXT STEP: Investigate failure, fix code, push new commit"

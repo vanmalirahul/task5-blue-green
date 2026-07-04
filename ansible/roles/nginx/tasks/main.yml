@@ -1,0 +1,47 @@
+---
+# NGINX ROLE — Install, configure and manage traffic routing
+
+- name: Install Nginx
+  yum:
+    name: nginx
+    state: present
+
+- name: Read current active slot from tracker file
+  slurp:                    # slurp = read a file's contents into a variable
+    src: /etc/bluegreen/active_slot
+  register: slot_file        # save the result into "slot_file" variable
+
+- name: Set active_slot variable from file content
+  set_fact:
+    active_slot: "{{ slot_file.content | b64decode | trim }}"
+    # b64decode = slurp encodes in base64, so we decode it
+    # trim = remove any trailing newline character
+
+- name: Set port for active slot
+  set_fact:
+    active_port: "{{ '8080' if active_slot == 'blue' else '8081' }}"
+
+- name: Show which slot Nginx will route to
+  debug:
+    msg: "Nginx routing to {{ active_slot }} slot (port {{ active_port }})"
+
+- name: Deploy Nginx config from template
+  template:
+    src: nginx.conf.j2
+    dest: /etc/nginx/conf.d/bluegreen.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: reload nginx      # triggers handler to reload nginx
+
+- name: Ensure Nginx is started and enabled
+  service:
+    name: nginx
+    state: started
+    enabled: yes
+
+handlers:
+  - name: reload nginx
+    service:
+      name: nginx
+      state: reloaded   # "reloaded" != "restarted" — reload keeps connections alive!

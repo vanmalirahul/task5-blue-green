@@ -1,0 +1,12 @@
+---
+# Entry point for Blue-Green deployment
+# Run: ansible-playbook -i inventory/hosts site.yml -e "app_version=v2.0"
+
+- name: Blue-Green Zero Downtime Deployment
+  hosts: appservers
+  become: yes
+  become_method: sudo
+
+  roles:
+    - role: nginx      # First: ensure nginx is set up
+    - role: bluegreen  # Then: run the blue-green deployment

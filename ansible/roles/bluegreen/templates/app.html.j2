@@ -1,0 +1,43 @@
+cat > ansible/roles/bluegreen/templates/app.html.j2 << 'EOF'
+<!DOCTYPE html>
+<html>
+<head>
+  <title>{{ deploy_to | upper }} Slot — vanmalirahul</title>
+  <style>
+    body { background: {{ deploy_color }}; color: {{ deploy_text }}; font-family: 'Segoe UI', sans-serif;
+           display:flex; align-items:center; justify-content:center; min-height:100vh; margin:0; }
+    .card { background: rgba(0,0,0,0.3); border-radius: 16px; padding: 48px; text-align: center; max-width: 500px; }
+    h1 { font-size: 48px; margin-bottom: 8px; }
+    .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 28px; }
+    .meta-item { background: rgba(255,255,255,0.08); border-radius: 8px; padding: 12px; }
+    .meta-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.6; }
+    .meta-value { font-size: 16px; font-weight: 700; font-family: monospace; margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>{{ '🔵' if deploy_to == 'blue' else '🟢' }}</h1>
+    <h2>{{ deploy_to | upper }} SLOT</h2>
+    <p>Deployed by Jenkins + Ansible</p>
+    <div class="meta">
+      <div class="meta-item">
+        <div class="meta-label">Version</div>
+        <div class="meta-value">{{ app_version | default('v1.0') }}</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Port</div>
+        <div class="meta-value">{{ deploy_port }}</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Server</div>
+        <div class="meta-value">192.168.1.102</div>
+      </div>
+      <div class="meta-item">
+        <div class="meta-label">Deployed At</div>
+        <div class="meta-value">{{ ansible_date_time.date }}</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+EOF
