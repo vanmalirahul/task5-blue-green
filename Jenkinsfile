@@ -88,7 +88,7 @@ pipeline {
                     # Read current active slot from the server
                     ACTIVE=\$(ssh -i /var/lib/jenkins/.ssh/id_rsa \
                         -o StrictHostKeyChecking=no \
-                        ansible-svc@${APP_SERVER} \
+                        rahulv@${APP_SERVER} \
                         "cat /etc/bluegreen/active_slot")
 
                     echo "Currently LIVE:  \$ACTIVE"
