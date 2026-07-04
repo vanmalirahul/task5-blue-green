@@ -45,3 +45,4 @@ handlers:
     service:
       name: nginx
       state: reloaded   # "reloaded" != "restarted" — reload keeps connections alive!
+
